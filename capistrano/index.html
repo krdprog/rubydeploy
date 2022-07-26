@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>RubyDeploy.ru &mdash; как деплоить Ruby on Rails через Capistrano + NGINX + Passenger</title>
+
+  <link rel="icon" type="image/png" href="//rubydeploy.ru/favicon.png" />
+
+  <meta name="description" content="Инструкция: как деплоить Ruby on Rails проект через Capistrano + NGINX + Passenger">
+  <meta name="keywords" content="Ruby, Ruby on Rails, deploy, capistrano, деплой, рельсы, VPS, развернуть, инструкция, Passenger, NGINX">
+  <meta name="author" content="Алексей Цаплин-Купайсинов">
+
+  <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
+
+  <style>
+    .container {
+      width: 100%;
+      max-width: 1024px;
+      padding: 0 15px;
+      margin: 0 auto;
+    }
+
+
+    pre {
+      box-sizing: border-box;
+      font-size: 16px;
+      background: #efefef;
+      border: 1px solid #777;
+      color: #333;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+  <div id="app">
+    <h1>Как деплоить Ruby on Rails через<br>Capistrano + NGINX + Passenger</h1>
+
+    <p><a href="//rubydeploy.ru"><< назад на главную</a></p>
+
+    <hr />
+    <!-- directives:[] -->
+    <div id="content"><p>Перед работой с инструкцией замените на свои данные следующие переменные (данные меняются динамически средствами Vue.js и нигде не сохраняются, отслеживания через счётчик на сайте нет):</p>
+
+      <p><strong>IP сервера:</strong> <input v-model="ip"></p>
+      <p><strong>Версия Ruby:</strong> <input v-model="ruby_version"></p>
+      <p><strong>Версия bundler:</strong> <input v-model="bundler_version"></p>
+      <p><strong>Название каталога проекта, файлов nginx конфигурации:</strong> <input v-model="project_name"></p>
+      <p><strong>Адрес сайта:</strong> <input v-model="site_url"></p>
+      <p><strong>Имя базы данных:</strong> <input v-model="db_name"></p>
+      <p><strong>Репозиторий с кодом проекта:</strong> <input v-model="git_repo"></p>
+      <p><strong>Из какой ветки брать код:</strong> <input v-model="branch_name"></p>
+
+      <p>Через замену нужные данные подставятся в нужные места.</p>
+      <hr />
+      <h3 id="">Настройка сервера перед деплоем</h3>
+      <pre><code class="bash language-bash">
+      ssh root@{{ ip }}
+
+      adduser deploy
+
+      # password: your_password_here
+
+      adduser deploy sudo
+
+      exit
+      </code></pre>
+      <pre><code class="bash language-bash">
+      # local
+      ssh-copy-id root@{{ ip }}
+      ssh-copy-id deploy@{{ ip }}
+      </code></pre>
+      <pre><code class="bash language-bash">
+      ssh deploy@{{ ip }}
+      </code></pre>
+      <pre><code class="bash language-bash">
+      curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
+
+      curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add -
+
+      echo "deb https://dl.yarnpkg.com/debian/ stable main" | sudo tee /etc/apt/sources.list.d/yarn.list
+
+      sudo add-apt-repository ppa:chris-lea/redis-server
+
+      sudo apt-get update
+
+      sudo apt-get install git-core curl zlib1g-dev build-essential libssl-dev \
+      libreadline-dev libyaml-dev libsqlite3-dev sqlite3 libxml2-dev \
+      libxslt1-dev libcurl4-openssl-dev software-properties-common libffi-dev \
+      dirmngr gnupg apt-transport-https ca-certificates redis-server redis-tools nodejs yarn
+
+      git clone https://github.com/rbenv/rbenv.git ~/.rbenv
+
+      echo 'export PATH="$HOME/.rbenv/bin:$PATH"' &gt;&gt; ~/.bashrc
+
+      echo 'eval "$(rbenv init -)"' &gt;&gt; ~/.bashrc
+
+      git clone https://github.com/rbenv/ruby-build.git ~/.rbenv/plugins/ruby-build
+
+      echo 'export PATH="$HOME/.rbenv/plugins/ruby-build/bin:$PATH"' &gt;&gt; ~/.bashrc
+
+      git clone https://github.com/rbenv/rbenv-vars.git ~/.rbenv/plugins/rbenv-vars
+
+      exec $SHELL
+
+      rbenv install {{ ruby_version }}
+
+      rbenv global {{ ruby_version }}
+
+      ruby -v
+
+      # gem install bundler
+
+      # If you want install old bundler: gem install bundler -v 1.17.3
+
+      gem install bundler -v {{ bundler_version }}
+
+      bundle -v
+
+      sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 561F9B9CAC40B2F7
+
+      sudo sh -c 'echo deb https://oss-binaries.phusionpassenger.com/apt/passenger \
+      focal main &gt; /etc/apt/sources.list.d/passenger.list'
+
+      sudo apt-get update
+
+      sudo apt-get install -y nginx-extras libnginx-mod-http-passenger
+
+      if [ ! -f /etc/nginx/modules-enabled/50-mod-http-passenger.conf ]; then \
+      sudo ln -s /usr/share/nginx/modules-available/mod-http-passenger.load \
+      /etc/nginx/modules-enabled/50-mod-http-passenger.conf ; fi
+
+      sudo ls /etc/nginx/conf.d/mod-http-passenger.conf
+      </code></pre>
+      <pre><code class="bash language-bash">
+      sudo nano /etc/nginx/conf.d/mod-http-passenger.conf
+      </code></pre>
+      <pre><code class="bash language-bash">
+      # добавить в файл
+      passenger_ruby /home/deploy/.rbenv/shims/ruby;
+      </code></pre>
+      <pre><code class="bash language-bash">
+      sudo service nginx start
+      </code></pre>
+      <pre><code class="bash language-bash">
+      sudo rm /etc/nginx/sites-enabled/default
+      sudo rm /etc/nginx/sites-available/default
+      </code></pre>
+      <pre><code class="bash language-bash">
+      sudo nano /etc/nginx/sites-available/{{ project_name }}.conf
+      </code></pre>
+      <pre><code class="bash language-bash">
+      server {
+        listen 80;
+        listen [::]:80;
+
+        server_name {{ site_url }};
+        access_log /var/log/nginx/{{ project_name }}.access.log;
+        error_log /var/log/nginx/{{ project_name }}.error.log;
+
+        passenger_enabled on;
+        passenger_app_env production;
+
+        root /home/deploy/{{ project_name }}/current/public;
+
+        location /cable {
+          passenger_app_group_name myapp_websocket;
+          passenger_force_max_concurrent_requests_per_process 0;
+        }
+
+        # Allow uploads up to 100MB in size
+        client_max_body_size 100m;
+
+        location ~ ^/(assets|packs) {
+          expires max;
+          gzip_static on;
+        }
+      }
+      </code></pre>
+      <pre><code class="bash language-bash">
+      sudo ln -s /etc/nginx/sites-available/{{ project_name }}.conf /etc/nginx/sites-enabled/{{ project_name }}.conf
+
+      sudo nginx -T
+
+      sudo service nginx restart &amp;&amp; sudo service nginx reload
+      </code></pre>
+      <pre><code class="bash language-bash">
+      # deploy@
+
+      locale
+      sudo locale-gen ru_RU.UTF-8
+      sudo nano /etc/environment
+
+      LANGUAGE=en_US.UTF-8
+      LANG=en_US.UTF-8
+      LC_ALL=ru_RU.UTF-8
+      LC_COLLATE=ru_RU.UTF-8
+      LC_TIME=en_US.UTF-8
+
+      timedatectl
+      sudo dpkg-reconfigure tzdata
+
+      Europe/Moscow
+      </code></pre>
+      <p>Этот шаг нужен, если на проекте надо из гит убрать секретные файлы</p>
+      <pre><code class="bash language-bash">
+      # локально в каталоге проекта (если у нас в git сохранены секретные файлы. уберём их)
+
+      git rm config/database.yml --cached
+
+      # add to .gitignore
+      /config/database.yml
+
+      # and commit
+      </code></pre>
+      <pre><code class="bash language-bash">
+      # @deploy
+
+      sudo apt-get install postgresql postgresql-contrib libpq-dev
+
+      sudo su - postgres
+
+      # user postgres
+
+      psql
+      \dg
+      create user deploy with password 'yourpasswordhere';
+
+      alter user deploy with superuser createdb createrole replication;
+
+      \l
+      create database "{{ db_name }}" with owner = deploy;
+
+      \q
+
+      psql -h localhost -U deploy -W {{ db_name }}
+
+      \q
+      exit
+      </code></pre>
+      <pre><code class="ruby language-ruby">
+      # local. add to Gemfile
+
+      gem 'capistrano', '~&gt; 3.11'
+      gem 'capistrano-rails', '~&gt; 1.4'
+      gem 'capistrano-passenger', '~&gt; 0.2.0'
+      gem 'capistrano-rbenv', '~&gt; 2.1', '&gt;= 2.1.4'
+      </code></pre>
+      <pre><code class="bash language-bash">
+      bundle
+
+      cap install STAGES=production
+      </code></pre>
+      <pre><code class="ruby language-ruby">
+      # add to Capfile
+
+      require 'capistrano/rails'
+      require 'capistrano/passenger'
+      require 'capistrano/rbenv'
+
+      set :rbenv_type, :user
+      set :rbenv_ruby, '{{ ruby_version }}'
+      </code></pre>
+      <pre><code class="ruby language-ruby">
+      # add to config/deploy.rb
+
+      set :application, "{{ project_name }}"
+      set :repo_url, "{{ git_repo }}"
+
+      set :branch, "{{ branch_name }}"
+
+      # Deploy to the user's home directory
+      set :deploy_to, "/home/deploy/{{ project_name }}"
+
+      append :linked_files, 'config/database.yml', 'config/credentials.yml.enc', 'config/master.key'
+      append :linked_dirs, 'log', 'tmp/pids', 'tmp/cache', 'tmp/sockets', 'vendor/bundle', '.bundle',
+                           'public/system', 'public/uploads'
+
+      # Only keep the last 5 releases to save disk space
+      set :keep_releases, 5
+      </code></pre>
+      <pre><code class="ruby language-ruby">
+      # local config/database.yml
+
+      default: &amp;default
+        adapter: postgresql
+        encoding: unicode
+        pool: &lt;%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %&gt;
+        timeout: 5000
+
+      development:
+        &lt;&lt;: *default
+        host: localhost
+        port: 5432
+        user: postgres
+        database: rubydeploy_dev
+
+      test:
+        &lt;&lt;: *default
+        host: localhost
+        port: 5432
+        database: rubydeploy_test
+
+      production:
+        &lt;&lt;: *default
+        host: localhost
+        port: 5432
+        database: {{ db_name }}
+        username: deploy
+        password: yourdbpassword
+      </code></pre>
+      <pre><code class="ruby language-ruby">
+      # add to config/production/deploy.rb
+
+      server '{{ ip }}', user: 'deploy', roles: %w{app db web}
+      </code></pre>
+      <pre><code class="bash language-bash">
+      ssh deploy@{{ ip }}
+
+      mkdir /home/deploy/{{ project_name }}
+
+      exit
+      </code></pre>
+      <pre><code class="bash language-bash">
+      # local. если надо обновить секретные файлы
+      rm config/master.key
+      rm config/credentials.yml.enc
+
+      rails credentials:edit
+      </code></pre>
+      <pre><code class="bash language-bash">
+      # local in project
+
+      # если были изменения в коде
+      git add
+      git commit -m "Edit deploy files"
+      git push
+
+      # далее
+      cap production deploy
+
+      # при первом деплое споткнётся об ERROR
+      # linked file /home/deploy/{{ project_name }}/shared/config/database.yml does not exist on {{ ip }}
+      # теперь мы можем добавить на сервер в структуру секретные файлы проекта
+
+      cd config
+
+      scp database.yml deploy@{{ ip }}:/home/deploy/{{ project_name }}/shared/config/database.yml
+
+      scp credentials.yml.enc deploy@{{ ip }}:/home/deploy/{{ project_name }}/shared/config/credentials.yml.enc
+
+      scp master.key deploy@{{ ip }}:/home/deploy/{{ project_name }}/shared/config/master.key
+
+      # далее
+      cap production deploy
+      </code></pre>
+      <pre><code>
+      # если выпала ошибка Passenger надо включить показ ошибок
+
+      ssh deploy@{{ ip }}
+
+      sudo nano /etc/nginx/sites-available/{{ project_name }}.config
+
+      # добавить строку
+      passenger_friendly_error_pages on;
+
+      sudo nginx -T
+
+      sudo service nginx restart &amp;&amp; sudo service nginx reload
+
+      # после исправления ошибки, убрать строку и перезапустить nginx
+      </code></pre>
+
+      <p>Выпуск сертификата SSL</p>
+
+      <ul>
+      <li>https://eax.me/lets-encrypt/</li>
+      </ul>
+      <pre><code>
+      sudo add-apt-repository ppa:certbot/certbot
+      sudo apt-get update
+      sudo apt-get install python3-certbot-nginx
+      </code></pre>
+      <pre><code>
+      sudo certbot --nginx -d {{ site_url }}
+      </code></pre>
+      <ul>
+      <li>https://whatsmychaincert.com/</li>
+      <li>https://www.ssllabs.com/ssltest/analyze.html</li>
+      </ul>
+      <p>Перевыпуск сертификата SSL</p>
+      <pre><code>
+      sudo certbot renew --dry-run
+      </code></pre>
+      <pre><code class="bash language-bash">
+      sudo nano /etc/nginx/sites-available/{{ project_name }}.conf
+      </code></pre>
+      <pre><code class="bash language-bash">
+      server {
+        listen 80;
+        listen [::]:80;
+
+        server_name {{ site_url }};
+
+        access_log /var/log/nginx/{{ project_name }}.access.log;
+        error_log /var/log/nginx/{{ project_name }}.error.log;
+
+        passenger_enabled on;
+        passenger_app_env production;
+
+        root /home/deploy/{{ project_name }}/current/public;
+
+        location /cable {
+          passenger_app_group_name myapp_websocket;
+          passenger_force_max_concurrent_requests_per_process 0;
+        }
+
+        # Allow uploads up to 100MB in size
+        client_max_body_size 100m;
+
+        location ~ ^/(assets|packs) {
+          expires max;
+          gzip_static on;
+        }
+
+        listen [::]:443 ssl; # managed by Certbot
+        listen 443 ssl; # managed by Certbot
+        ssl_certificate /etc/letsencrypt/live/{{ site_url }}/fullchain.pem; # managed by Certbot
+        ssl_certificate_key /etc/letsencrypt/live/{{ site_url }}/privkey.pem; # managed by Certbot
+        include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+        ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed
+      }
+      </code></pre>
+      <pre><code class="bash language-bash">
+      sudo nginx -T
+
+      sudo service nginx restart &amp;&amp; sudo service nginx reload
+      </code></pre>
+      <p>Как запустить рельсовую консоль:</p>
+      <pre><code>
+      ssh deploy@{{ ip }}
+
+      cd /home/deploy/{{ project_name }}/current/bin
+      RAILS_ENV=production bundle exec rails c
+      </code></pre>
+    </div>
+
+    <p><a href="//rubydeploy.ru"><< назад на главную</a></p>
+
+    <p>&nbsp;</p>
+
+    <p><strong>Автор идеи:</strong> <a href="https://github.com/krdprog/" target="_blank">Алексей Цаплин-Купайсинов (@krdprog)</a>, backend Ruby on Rails developer</p>
+    <p>Снятие ответственности: сайт не является исчерпывающей документацией. Это всего лишь одна из точек зрения на рассматриваемый вопрос по деплою приложений. За достоверной информацией просьба обращаться к документации к программному обеспечению. Автор снимает с себя ответственность за последствия следования описанной инструкции по деплою. Данная инструкция носит чисто информационный характер и является сгруппированной коллекцией собранных материалов из открытых источников в интернете.</p>
+
+    <script>
+      var app = new Vue({
+        el: '#app',
+        data: {
+          ip: '88.888.88.88',
+          ruby_version: '2.6.5',
+          bundler_version: '1.17.2',
+          project_name: 'rubydeploy',
+          site_url: 'rubydeploy.ru',
+          db_name: 'rubydeploy_prod',
+          git_repo: 'git@github.com:krdprog/rubydeploy.git',
+          branch_name: 'master'
+        }
+      })
+    </script>
+  </div>
+</div>
+</body>
+</html>
